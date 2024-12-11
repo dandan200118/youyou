@@ -197,7 +197,7 @@ func (c *Chat) State(ctx context.Context) (int, error) {
 		Header("Cookie", emit.MergeCookies(c.cookie, c.clearance)).
 		Header("User-Agent", c.userAgent).
 		Header("Accept-Language", c.lang).
-		Header("Referer", "https://you.com/").
+		Header("Referer", "https://you.com/?chatMode="+c.mode).
 		Header("Origin", "https://you.com").
 		DoS(http.StatusOK)
 	if err != nil {
@@ -249,7 +249,7 @@ func (c *Chat) Custom(ctx context.Context, modelName, system string, isNew bool)
 		Header("Cookie", emit.MergeCookies(c.cookie, c.clearance)).
 		Header("User-Agent", c.userAgent).
 		Header("Accept-Language", c.lang).
-		Header("Referer", "https://you.com/").
+		Header("Referer", "https://you.com/?chatMode="+c.mode).
 		Header("Origin", "https://you.com").
 		DoC(emit.Status(http.StatusOK), emit.IsJSON)
 	if err != nil {
@@ -292,7 +292,7 @@ func (c *Chat) Custom(ctx context.Context, modelName, system string, isNew bool)
 			Header("Cookie", emit.MergeCookies(c.cookie, c.clearance)).
 			Header("User-Agent", c.userAgent).
 			Header("Accept-Language", c.lang).
-			Header("Referer", "https://you.com/").
+			Header("Referer", "https://you.com/?chatMode="+c.mode).
 			Header("Origin", "https://you.com").
 			JHeader().
 			Body(map[string]interface{}{
@@ -315,7 +315,7 @@ func (c *Chat) Custom(ctx context.Context, modelName, system string, isNew bool)
 		Header("Cookie", emit.MergeCookies(c.cookie, c.clearance)).
 		Header("User-Agent", c.userAgent).
 		Header("Accept-Language", c.lang).
-		Header("Referer", "https://you.com/").
+		Header("Referer", "https://you.com/?chatMode="+c.mode).
 		Header("Origin", "https://you.com").
 		JHeader().
 		Body(map[string]interface{}{
