@@ -61,8 +61,8 @@ const (
 )
 
 func New(cookie, model, proxies string) Chat {
-	lang := "en-US,en;q=0.9"
-	userAgent := "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36 Edg/125.0.0.0"
+	lang := "zh-CN,zh;q=0.9"
+	userAgent := "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
 	return Chat{
 		cookie,
 		"",
@@ -385,7 +385,7 @@ func (c *Chat) upload(ctx context.Context, proxies, filename, content string) (s
 		Ja3().
 		GET("https://you.com/api/get_nonce").
 		Header("Cookie", emit.MergeCookies(c.cookie, c.clearance)).
-		Header("Accept", "application/json, text/plain, */*").
+		Header("Accept", "*/*").
 		Header("Accept-Language", c.lang).
 		Header("Referer", "https://you.com/?chatMode="+c.mode).
 		Header("Origin", "https://you.com").
