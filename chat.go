@@ -172,6 +172,12 @@ func (c *Chat) Reply(ctx context.Context, chats []Message, fileMessages, query s
 	return ch, nil
 }
 
+type state struct {
+	Freemium          map[string]int  `json:"freemium"`
+	Subscriptions     []interface{} `json:"subscriptions"`
+	Org_subscriptions []interface{} `json:"org_subscriptions"`
+}
+
 func (c *Chat) State(ctx context.Context) (int, error) {
 	response, err := emit.ClientBuilder(c.session).
 		Context(ctx).
@@ -215,11 +221,11 @@ func (c *Chat) State(ctx context.Context) (int, error) {
 		} `json:"props"`
 	}
 
-	type state struct {
-		Freemium          map[string]int  `json:"freemium"`
-		Subscriptions     []interface{} `json:"subscriptions"`
-		Org_subscriptions []interface{} `json:"org_subscriptions"`
-	}
+	//type state struct {
+	//	Freemium          map[string]int  `json:"freemium"`
+	//	Subscriptions     []interface{} `json:"subscriptions"`
+	//	Org_subscriptions []interface{} `json:"org_subscriptions"`
+	//}
 
 	var data nextData
 	if err = json.Unmarshal([]byte(scriptContent), &data); err != nil {
