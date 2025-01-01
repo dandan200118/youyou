@@ -244,6 +244,12 @@ func (c *Chat) State(ctx context.Context) (int, error) {
 		return -1, err
 	}
 
+youProStateBytes, err := json.Marshal(youProState)
+if err != nil {
+    return -1, err
+}
+logrus.Infof("youProStateBytes: %s", string(youProStateBytes)) // 打印 youProStateBytes
+	
 	if err := json.Unmarshal(youProStateBytes, &s); err != nil {
 		return -1, fmt.Errorf("error unmarshaling youProState JSON: %v", err)
 	}
