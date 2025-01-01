@@ -176,7 +176,7 @@ func (c *Chat) State(ctx context.Context) (int, error) {
 		Context(ctx).
 		Proxies(c.proxies).
 		Ja3().
-		GET("https://you.com/api/user/getYouProState").
+		GET("https://you.com?chatMode=custom").
 		Header("Cookie", emit.MergeCookies(c.cookie, c.clearance)).
 		Header("User-Agent", c.userAgent).
 		Header("Accept-Language", c.lang).
