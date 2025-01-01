@@ -246,6 +246,7 @@ func (c *Chat) State(ctx context.Context) (int, error) {
 	logrus.Infof("youProStateBytes: %s", string(youProStateBytes)) // 打印 youProStateBytes
 	
 	if err := json.Unmarshal(youProStateBytes, &s); err != nil {
+		logrus.Errorf("error unmarshaling youProState JSON: %v", err) // 打印详细的错误信息
 		return -1, fmt.Errorf("error unmarshaling youProState JSON: %v", err)
 	}
 
