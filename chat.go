@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/PuerkitoBio/goquery"
 	"github.com/bincooo/emit.io"
 	_ "github.com/gingfrederik/docx"
 	"github.com/google/uuid"
@@ -171,12 +172,6 @@ func (c *Chat) Reply(ctx context.Context, chats []Message, fileMessages, query s
 	return ch, nil
 }
 
-type state struct {
-	Freemium          map[string]int    `json:"freemium"`
-	Subscriptions     []interface{} `json:"subscriptions"`
-	Org_subscriptions []interface{} `json:"org_subscriptions"`
-}
-
 func (c *Chat) State(ctx context.Context) (int, error) {
 	response, err := emit.ClientBuilder(c.session).
 		Context(ctx).
@@ -195,122 +190,64 @@ func (c *Chat) State(ctx context.Context) (int, error) {
 
 	defer response.Body.Close()
 
-	bodyBytes, err := io.ReadAll(response.Body)
+	// 使用 goquery 解析 HTML
+	doc, err := goquery.NewDocumentFromReader(response.Body)
 	if err != nil {
-		return -1, err
-	}
-	bodyString := string(bodyBytes)
-	logrus.Infof("Response Body:\n%s", bodyString)
-
-	// 1. 查找 <script id="__NEXT_DATA__" type="application/json"> 标签
-	start := strings.Index(bodyString, "<script id=\"__NEXT_DATA__\" type=\"application/json\">")
-	if start == -1 {
-		return -1, errors.New("script tag with id __NEXT_DATA__ not found")
-	}
-	start += len("<script id=\"__NEXT_DATA__\" type=\"application/json\">")
-
-	end := strings.Index(bodyString[start:], "</script>")
-	if end == -1 {
-		return -1, errors.New("closing script tag not found")
+		return -1, fmt.Errorf("failed to parse HTML: %w", err)
 	}
 
-	// 2. 提取 JSON 字符串
-	jsonStr := bodyString[start : start+end]
+	// 查找 <script id="__NEXT_DATA__" type="application/json"> 标签
+	scriptContent := ""
+	doc.Find("script#__NEXT_DATA__[type='application/json']").Each(func(i int, s *goquery.Selection) {
+		scriptContent = s.Text()
+	})
 
-	// 3. 直接查找 "youProState" 对应的 JSON 对象
-	youProStateStart := strings.Index(jsonStr, `"youProState":{`)
-	if youProStateStart == -1 {
-		return -1, errors.New(`"youProState" not found in JSON`)
-	}
-	youProStateStart += len(`"youProState":`)
-
-	// 4. 手动解析 "youProState" 对象
-	bracketCount := 0
-	youProStateEnd := -1
-	for i := youProStateStart; i < len(jsonStr); i++ {
-		if jsonStr[i] == '{' {
-			bracketCount++
-		} else if jsonStr[i] == '}' {
-			bracketCount--
-		}
-		if bracketCount == 0 {
-			youProStateEnd = i + 1
-			break
-		}
+	if scriptContent == "" {
+		return -1, errors.New("failed to find JSON data in HTML")
 	}
 
-	if youProStateEnd == -1 {
-		return -1, errors.New(`could not find end of "youProState" object`)
+	// 解析 JSON 数据
+	type nextData struct {
+		Props struct {
+			PageProps struct {
+				YouProState state `json:"youProState"`
+			} `json:"pageProps"`
+		} `json:"props"`
 	}
 
-	youProStateStr := jsonStr[youProStateStart:youProStateEnd]
-
-	// 5. 解析 "freemium" 对象
-	freemiumStart := strings.Index(youProStateStr, `"freemium":{`)
-	if freemiumStart == -1 {
-		return -1, errors.New(`"freemium" not found in "youProState"`)
+	type state struct {
+		Freemium          map[string]int  `json:"freemium"`
+		Subscriptions     []interface{} `json:"subscriptions"`
+		Org_subscriptions []interface{} `json:"org_subscriptions"`
 	}
-	freemiumStart += len(`"freemium":`)
 
-	bracketCount = 0
-	freemiumEnd := -1
-	for i := freemiumStart; i < len(youProStateStr); i++ {
-		if youProStateStr[i] == '{' {
-			bracketCount++
-		} else if youProStateStr[i] == '}' {
-			bracketCount--
-		}
-		if bracketCount == 0 {
-			freemiumEnd = i + 1
-			break
+	var data nextData
+	if err = json.Unmarshal([]byte(scriptContent), &data); err != nil {
+		return -1, fmt.Errorf("failed to parse JSON: %w", err)
+	}
+
+	s := data.Props.PageProps.YouProState
+
+	if len(s.Subscriptions) > 0 {
+		iter := s.Subscriptions[0]
+		value := iter.(map[string]interface{})
+		if service, ok := value["service"]; ok && service == "youpro" {
+			logrus.Info("used: you pro") // 无限额度
+			return 200, nil
 		}
 	}
 
-	if freemiumEnd == -1 {
-		return -1, errors.New(`could not find end of "freemium" object`)
+	if len(s.Org_subscriptions) > 0 {
+		iter := s.Org_subscriptions[0]
+		value := iter.(map[string]interface{})
+		if service, ok := value["service"]; ok && service == "youpro_teams" {
+			logrus.Info("used: you team") // 无限额度
+			return 200, nil
+		}
 	}
 
-	freemiumStr := youProStateStr[freemiumStart:freemiumEnd]
-
-	// 6. 提取 "max_calls" 和 "used_calls"
-	maxCallsStart := strings.Index(freemiumStr, `"max_calls":`)
-	if maxCallsStart == -1 {
-		return -1, errors.New(`"max_calls" not found in "freemium"`)
-	}
-	maxCallsStart += len(`"max_calls":`)
-	maxCallsEnd := strings.Index(freemiumStr[maxCallsStart:], ",")
-	if maxCallsEnd == -1 {
-		maxCallsEnd = len(freemiumStr) - 1 // 到 "}" 前面
-	} else {
-		maxCallsEnd += maxCallsStart
-	}
-
-	maxCallsStr := freemiumStr[maxCallsStart:maxCallsEnd]
-	maxCalls, err := strconv.Atoi(strings.TrimSpace(maxCallsStr))
-	if err != nil {
-		return -1, fmt.Errorf(`error parsing "max_calls": %v`, err)
-	}
-
-	usedCallsStart := strings.Index(freemiumStr, `"used_calls":`)
-	if usedCallsStart == -1 {
-		return -1, errors.New(`"used_calls" not found in "freemium"`)
-	}
-	usedCallsStart += len(`"used_calls":`)
-	usedCallsEnd := strings.Index(freemiumStr[usedCallsStart:], ",")
-	if usedCallsEnd == -1 {
-		usedCallsEnd = len(freemiumStr) - 1 // 到 "}" 前面
-	} else {
-		usedCallsEnd += usedCallsStart
-	}
-
-	usedCallsStr := freemiumStr[usedCallsStart:usedCallsEnd]
-	usedCalls, err := strconv.Atoi(strings.TrimSpace(usedCallsStr))
-	if err != nil {
-		return -1, fmt.Errorf(`error parsing "used_calls": %v`, err)
-	}
-
-	logrus.Infof("used: %d/%d", usedCalls, maxCalls)
-	return maxCalls - usedCalls, nil
+	logrus.Infof("used: %d/%d", s.Freemium["used_calls"], s.Freemium["max_calls"])
+	return s.Freemium["max_calls"] - s.Freemium["used_calls"], nil
 }
 
 // 创建一个自定义模型，已存在则删除后创建
