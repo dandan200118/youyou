@@ -171,104 +171,104 @@ func (c *Chat) Reply(ctx context.Context, chats []Message, fileMessages, query s
 	return ch, nil
 }
 
+type state struct {
+	Freemium          map[string]int    `json:"freemium"`
+	Subscriptions     []interface{} `json:"subscriptions"`
+	Org_subscriptions []interface{} `json:"org_subscriptions"`
+}
+
 func (c *Chat) State(ctx context.Context) (int, error) {
-    response, err := emit.ClientBuilder(c.session).
-        Context(ctx).
-        Proxies(c.proxies).
-        Ja3().
-        GET("https://you.com?chatMode=custom").
-        Header("Cookie", emit.MergeCookies(c.cookie, c.clearance)).
-        Header("User-Agent", c.userAgent).
-        Header("Accept-Language", c.lang).
-        Header("Referer", "https://you.com/").
-        Header("Origin", "https://you.com").
-        DoS(http.StatusOK)
-    if err != nil {
-        return -1, err
-    }
+	response, err := emit.ClientBuilder(c.session).
+		Context(ctx).
+		Proxies(c.proxies).
+		Ja3().
+		GET("https://you.com?chatMode=custom").
+		Header("Cookie", emit.MergeCookies(c.cookie, c.clearance)).
+		Header("User-Agent", c.userAgent).
+		Header("Accept-Language", c.lang).
+		Header("Referer", "https://you.com/").
+		Header("Origin", "https://you.com").
+		DoS(http.StatusOK)
+	if err != nil {
+		return -1, err
+	}
 
-    defer response.Body.Close()
+	defer response.Body.Close()
 
-    bodyBytes, err := io.ReadAll(response.Body)
-    if err != nil {
-        return -1, err
-    }
-    bodyString := string(bodyBytes)
-    logrus.Infof("Response Body:\n%s", bodyString)
+	bodyBytes, err := io.ReadAll(response.Body)
+	if err != nil {
+		return -1, err
+	}
+	bodyString := string(bodyBytes)
+	logrus.Infof("Response Body:\n%s", bodyString)
 
-    // 1. 查找 <script id="__NEXT_DATA__" type="application/json"> 标签
-    start := strings.Index(bodyString, "<script id=\"__NEXT_DATA__\" type=\"application/json\">")
-    if start == -1 {
-        return -1, errors.New("script tag with id __NEXT_DATA__ not found")
-    }
-    start += len("<script id=\"__NEXT_DATA__\" type=\"application/json\">")
+	// 1. 查找 <script id="__NEXT_DATA__" type="application/json"> 标签
+	start := strings.Index(bodyString, "<script id=\"__NEXT_DATA__\" type=\"application/json\">")
+	if start == -1 {
+		return -1, errors.New("script tag with id __NEXT_DATA__ not found")
+	}
+	start += len("<script id=\"__NEXT_DATA__\" type=\"application/json\">")
 
-    end := strings.Index(bodyString[start:], "</script>")
-    if end == -1 {
-        return -1, errors.New("closing script tag not found")
-    }
+	end := strings.Index(bodyString[start:], "</script>")
+	if end == -1 {
+		return -1, errors.New("closing script tag not found")
+	}
 
-    // 2. 提取 JSON 字符串
-    jsonStr := bodyString[start : start+end]
+	// 2. 提取 JSON 字符串
+	jsonStr := bodyString[start : start+end]
 
-    // 3. 解析 JSON 到一个通用的 map[string]interface{}
-    var data map[string]interface{}
-    if err := json.Unmarshal([]byte(jsonStr), &data); err != nil {
-        return -1, fmt.Errorf("error parsing JSON: %v", err)
-    }
+	// 3. 解析 JSON 到一个通用的 map[string]interface{}
+	var data map[string]interface{}
+	if err := json.Unmarshal([]byte(jsonStr), &data); err != nil {
+		return -1, fmt.Errorf("error parsing JSON: %v", err)
+	}
 
-    // 4. 层层解析，直到找到 youProState
-    props, ok := data["props"].(map[string]interface{})
-    if !ok {
-        return -1, errors.New("key 'props' not found or not a map")
-    }
-    pageProps, ok := props["pageProps"].(map[string]interface{})
-    if !ok {
-        return -1, errors.New("key 'pageProps' not found or not a map")
-    }
-    youProState, ok := pageProps["youProState"].(map[string]interface{})
-    if !ok {
-        return -1, errors.New("key 'youProState' not found or not a map")
-    }
+	// 4. 层层解析，直到找到 youProState
+	props, ok := data["props"].(map[string]interface{})
+	if !ok {
+		return -1, errors.New("key 'props' not found or not a map")
+	}
+	pageProps, ok := props["pageProps"].(map[string]interface{})
+	if !ok {
+		return -1, errors.New("key 'pageProps' not found or not a map")
+	}
+	youProState, ok := pageProps["youProState"].(map[string]interface{})
+	if !ok {
+		return -1, errors.New("key 'youProState' not found or not a map")
+	}
 
-    // 5. 将 youProState 映射到 state 结构体
-    youProStateBytes, err := json.Marshal(youProState) // 将 youProState 转换回 JSON 字节流
-    if err != nil {
-        return -1, fmt.Errorf("error marshaling youProState to JSON: %v", err)
-    }
+	// 5. 将 youProState 直接反序列化到 state 结构体
+	var s state
+	youProStateBytes, err := json.Marshal(youProState)
+	if err != nil {
+		return -1, err
+	}
 
-    type state struct {
-        Freemium          map[string]int    `json:"freemium"`
-        Subscriptions     []interface{} `json:"subscriptions"`
-        Org_subscriptions []interface{} `json:"org_subscriptions"`
-    }
+	if err := json.Unmarshal(youProStateBytes, &s); err != nil {
+		return -1, fmt.Errorf("error unmarshaling youProState JSON: %v", err)
+	}
 
-    var s state
-    if err := json.Unmarshal(youProStateBytes, &s); err != nil {
-        return -1, fmt.Errorf("error unmarshaling youProState JSON: %v", err)
-    }
+	// ... 后续逻辑，使用 s.Freemium, s.Subscriptions, s.Org_subscriptions ...
+	if len(s.Subscriptions) > 0 {
+		iter := s.Subscriptions[0]
+		value := iter.(map[string]interface{})
+		if service, ok := value["service"]; ok && service == "youpro" {
+			logrus.Info("used: you pro")
+			return 200, nil
+		}
+	}
 
-    // ... 后续逻辑，使用 s.Freemium, s.Subscriptions, s.Org_subscriptions ...
-    if len(s.Subscriptions) > 0 {
-        iter := s.Subscriptions[0]
-        value := iter.(map[string]interface{})
-        if service, ok := value["service"]; ok && service == "youpro" {
-            logrus.Info("used: you pro")
-            return 200, nil
-        }
-    }
+	if len(s.Org_subscriptions) > 0 {
+		iter := s.Org_subscriptions[0]
+		value := iter.(map[string]interface{})
+		if service, ok := value["service"]; ok && service == "youpro_teams" {
+			logrus.Info("used: you team")
+			return 200, nil
+		}
+	}
 
-    if len(s.Org_subscriptions) > 0 {
-        iter := s.Org_subscriptions[0]
-        value := iter.(map[string]interface{})
-        if service, ok := value["service"]; ok && service == "youpro_teams" {
-            logrus.Info("used: you team")
-            return 200, nil
-        }
-    }
-
-    logrus.Infof("used: %d/%d", s.Freemium["used_calls"], s.Freemium["max_calls"])
-    return s.Freemium["max_calls"] - s.Freemium["used_calls"], nil
+	logrus.Infof("used: %d/%d", s.Freemium["used_calls"], s.Freemium["max_calls"])
+	return s.Freemium["max_calls"] - s.Freemium["used_calls"], nil
 }
 
 // 创建一个自定义模型，已存在则删除后创建
