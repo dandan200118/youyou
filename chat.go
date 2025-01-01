@@ -176,7 +176,7 @@ func (c *Chat) State(ctx context.Context) (int, error) {
         Context(ctx).
         Proxies(c.proxies).
         Ja3().
-        GET("https://you.com?chatMode=custom"). // 注意：这里应该是 "https://you.com/api/user/getYouProState"
+        GET("https://you.com?chatMode=custom").
         Header("Cookie", emit.MergeCookies(c.cookie, c.clearance)).
         Header("User-Agent", c.userAgent).
         Header("Accept-Language", c.lang).
@@ -189,16 +189,53 @@ func (c *Chat) State(ctx context.Context) (int, error) {
 
     defer response.Body.Close()
 
-    // 读取并打印响应体
     bodyBytes, err := io.ReadAll(response.Body)
     if err != nil {
         return -1, err
     }
     bodyString := string(bodyBytes)
-    logrus.Infof("Response Body:\n%s", bodyString) // 打印响应体
+    logrus.Infof("Response Body:\n%s", bodyString)
 
-    // 重置 response.Body, 因为 io.ReadAll 会消耗掉 Body 内容
-    response.Body = io.NopCloser(bytes.NewBuffer(bodyBytes))
+    // 1. 查找 <script id="__NEXT_DATA__" type="application/json"> 标签
+    start := strings.Index(bodyString, "<script id=\"__NEXT_DATA__\" type=\"application/json\">")
+    if start == -1 {
+        return -1, errors.New("script tag with id __NEXT_DATA__ not found")
+    }
+    start += len("<script id=\"__NEXT_DATA__\" type=\"application/json\">")
+
+    end := strings.Index(bodyString[start:], "</script>")
+    if end == -1 {
+        return -1, errors.New("closing script tag not found")
+    }
+
+    // 2. 提取 JSON 字符串
+    jsonStr := bodyString[start : start+end]
+
+    // 3. 解析 JSON 到一个通用的 map[string]interface{}
+    var data map[string]interface{}
+    if err := json.Unmarshal([]byte(jsonStr), &data); err != nil {
+        return -1, fmt.Errorf("error parsing JSON: %v", err)
+    }
+
+    // 4. 层层解析，直到找到 youProState
+    props, ok := data["props"].(map[string]interface{})
+    if !ok {
+        return -1, errors.New("key 'props' not found or not a map")
+    }
+    pageProps, ok := props["pageProps"].(map[string]interface{})
+    if !ok {
+        return -1, errors.New("key 'pageProps' not found or not a map")
+    }
+    youProState, ok := pageProps["youProState"].(map[string]interface{})
+    if !ok {
+        return -1, errors.New("key 'youProState' not found or not a map")
+    }
+
+    // 5. 将 youProState 映射到 state 结构体
+    youProStateBytes, err := json.Marshal(youProState) // 将 youProState 转换回 JSON 字节流
+    if err != nil {
+        return -1, fmt.Errorf("error marshaling youProState to JSON: %v", err)
+    }
 
     type state struct {
         Freemium          map[string]int    `json:"freemium"`
@@ -207,16 +244,16 @@ func (c *Chat) State(ctx context.Context) (int, error) {
     }
 
     var s state
-    if err = emit.ToObject(response, &s); err != nil {
-        logrus.Errorf("Error parsing response: %v", err) // 记录解析错误
-        return -1, err
+    if err := json.Unmarshal(youProStateBytes, &s); err != nil {
+        return -1, fmt.Errorf("error unmarshaling youProState JSON: %v", err)
     }
 
+    // ... 后续逻辑，使用 s.Freemium, s.Subscriptions, s.Org_subscriptions ...
     if len(s.Subscriptions) > 0 {
         iter := s.Subscriptions[0]
         value := iter.(map[string]interface{})
         if service, ok := value["service"]; ok && service == "youpro" {
-            logrus.Info("used: you pro") // 无限额度
+            logrus.Info("used: you pro")
             return 200, nil
         }
     }
@@ -225,7 +262,7 @@ func (c *Chat) State(ctx context.Context) (int, error) {
         iter := s.Org_subscriptions[0]
         value := iter.(map[string]interface{})
         if service, ok := value["service"]; ok && service == "youpro_teams" {
-            logrus.Info("used: you team") // 无限额度
+            logrus.Info("used: you team")
             return 200, nil
         }
     }
