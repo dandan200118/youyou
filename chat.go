@@ -172,53 +172,66 @@ func (c *Chat) Reply(ctx context.Context, chats []Message, fileMessages, query s
 }
 
 func (c *Chat) State(ctx context.Context) (int, error) {
-	response, err := emit.ClientBuilder(c.session).
-		Context(ctx).
-		Proxies(c.proxies).
-		Ja3().
-		GET("https://you.com?chatMode=custom").
-		Header("Cookie", emit.MergeCookies(c.cookie, c.clearance)).
-		Header("User-Agent", c.userAgent).
-		Header("Accept-Language", c.lang).
-		Header("Referer", "https://you.com/").
-		Header("Origin", "https://you.com").
-		DoS(http.StatusOK)
-	if err != nil {
-		return -1, err
-	}
+    response, err := emit.ClientBuilder(c.session).
+        Context(ctx).
+        Proxies(c.proxies).
+        Ja3().
+        GET("https://you.com?chatMode=custom"). // 注意：这里应该是 "https://you.com/api/user/getYouProState"
+        Header("Cookie", emit.MergeCookies(c.cookie, c.clearance)).
+        Header("User-Agent", c.userAgent).
+        Header("Accept-Language", c.lang).
+        Header("Referer", "https://you.com/").
+        Header("Origin", "https://you.com").
+        DoS(http.StatusOK)
+    if err != nil {
+        return -1, err
+    }
 
-	defer response.Body.Close()
-	type state struct {
-		Freemium          map[string]int
-		Subscriptions     []interface{}
-		Org_subscriptions []interface{}
-	}
+    defer response.Body.Close()
 
-	var s state
-	if err = emit.ToObject(response, &s); err != nil {
-		return -1, err
-	}
+    // 读取并打印响应体
+    bodyBytes, err := io.ReadAll(response.Body)
+    if err != nil {
+        return -1, err
+    }
+    bodyString := string(bodyBytes)
+    logrus.Infof("Response Body:\n%s", bodyString) // 打印响应体
 
-	if len(s.Subscriptions) > 0 {
-		iter := s.Subscriptions[0]
-		value := iter.(map[string]interface{})
-		if service, ok := value["service"]; ok && service == "youpro" {
-			logrus.Info("used: you pro") // 无限额度
-			return 200, nil
-		}
-	}
+    // 重置 response.Body, 因为 io.ReadAll 会消耗掉 Body 内容
+    response.Body = io.NopCloser(bytes.NewBuffer(bodyBytes))
 
-	if len(s.Org_subscriptions) > 0 {
-		iter := s.Org_subscriptions[0]
-		value := iter.(map[string]interface{})
-		if service, ok := value["service"]; ok && service == "youpro_teams" {
-			logrus.Info("used: you team") // 无限额度
-			return 200, nil
-		}
-	}
+    type state struct {
+        Freemium          map[string]int    `json:"freemium"`
+        Subscriptions     []interface{} `json:"subscriptions"`
+        Org_subscriptions []interface{} `json:"org_subscriptions"`
+    }
 
-	logrus.Infof("used: %d/%d", s.Freemium["used_calls"], s.Freemium["max_calls"])
-	return s.Freemium["max_calls"] - s.Freemium["used_calls"], nil
+    var s state
+    if err = emit.ToObject(response, &s); err != nil {
+        logrus.Errorf("Error parsing response: %v", err) // 记录解析错误
+        return -1, err
+    }
+
+    if len(s.Subscriptions) > 0 {
+        iter := s.Subscriptions[0]
+        value := iter.(map[string]interface{})
+        if service, ok := value["service"]; ok && service == "youpro" {
+            logrus.Info("used: you pro") // 无限额度
+            return 200, nil
+        }
+    }
+
+    if len(s.Org_subscriptions) > 0 {
+        iter := s.Org_subscriptions[0]
+        value := iter.(map[string]interface{})
+        if service, ok := value["service"]; ok && service == "youpro_teams" {
+            logrus.Info("used: you team") // 无限额度
+            return 200, nil
+        }
+    }
+
+    logrus.Infof("used: %d/%d", s.Freemium["used_calls"], s.Freemium["max_calls"])
+    return s.Freemium["max_calls"] - s.Freemium["used_calls"], nil
 }
 
 // 创建一个自定义模型，已存在则删除后创建
