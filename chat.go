@@ -205,14 +205,19 @@ func (c *Chat) State(ctx context.Context) (int, error) {
 
 	// 查找 <script id="__NEXT_DATA__" type="application/json"> 标签
 	scriptContent := ""
-	doc.Find("script#__NEXT_DATA__[type='application/json']").Each(func(i int, s *goquery.Selection) {
-		scriptContent = s.Text()
+	doc.Find("script#__NEXT_DATA__[type='application/json']").Each(func(i int, scriptTag *goquery.Selection) {
+		scriptContent = scriptTag.Text()
 	})
-
+	
 	if scriptContent == "" {
 		return -1, errors.New("failed to find JSON data in HTML")
 	}
 
+	// 打印提取的 JSON 数据
+	fmt.Println("-------------------- Extracted JSON --------------------")
+	fmt.Println(scriptContent)
+	fmt.Println("--------------------------------------------------------")
+	
 	// 解析 JSON 数据
 	type nextData struct {
 		Props struct {
