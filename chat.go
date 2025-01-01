@@ -270,8 +270,7 @@ func (c *Chat) Custom(ctx context.Context, modelName, system string, isNew bool)
 		Header("Accept-Language", c.lang).
 		Header("Referer", "https://you.com/").
 		Header("Origin", "https://you.com").
-		//DoC(emit.Status(http.StatusOK), emit.IsJSON)
-		DoC(emit.Status(http.StatusOK))
+		DoC(emit.Status(http.StatusOK), emit.IsJSON)
 	if err != nil {
 		return err
 	}
@@ -318,8 +317,7 @@ func (c *Chat) Custom(ctx context.Context, modelName, system string, isNew bool)
 			Body(map[string]interface{}{
 				"chatModeId": modelId,
 			}).
-			//DoC(emit.Status(http.StatusOK), emit.IsJSON)
-			DoC(emit.Status(http.StatusOK))
+			DoC(emit.Status(http.StatusOK), emit.IsJSON)
 		if err != nil {
 			return err
 		}
@@ -354,8 +352,7 @@ func (c *Chat) Custom(ctx context.Context, modelName, system string, isNew bool)
 			"sources":               make([]string, 0),
 			"webAccessConfig":       make(map[string]interface{}),
 		}).
-		//DoC(emit.Status(http.StatusOK), emit.IsJSON)
-		DoC(emit.Status(http.StatusOK))
+		DoC(emit.Status(http.StatusOK), emit.IsJSON)
 	if err != nil {
 		return err
 	}
@@ -390,7 +387,7 @@ func (c *Chat) delete(chatId string) {
 		JSONHeader().
 		Body(map[string]interface{}{
 			"chatId": chatId,
-		}).DoC(emit.Status(http.StatusOK)) //DoC(emit.Status(http.StatusOK), emit.IsJSON)
+		}).DoC(emit.Status(http.StatusOK), emit.IsJSON)
 	if err != nil {
 		logrus.Error(err)
 		return
