@@ -217,60 +217,100 @@ func (c *Chat) State(ctx context.Context) (int, error) {
 	// 2. 提取 JSON 字符串
 	jsonStr := bodyString[start : start+end]
 
-	// 3. 解析 JSON 到一个通用的 map[string]interface{}
-	var data map[string]interface{}
-	if err := json.Unmarshal([]byte(jsonStr), &data); err != nil {
-		return -1, fmt.Errorf("error parsing JSON: %v", err)
+	// 3. 直接查找 "youProState" 对应的 JSON 对象
+	youProStateStart := strings.Index(jsonStr, `"youProState":{`)
+	if youProStateStart == -1 {
+		return -1, errors.New(`"youProState" not found in JSON`)
+	}
+	youProStateStart += len(`"youProState":`)
+
+	// 4. 手动解析 "youProState" 对象
+	bracketCount := 0
+	youProStateEnd := -1
+	for i := youProStateStart; i < len(jsonStr); i++ {
+		if jsonStr[i] == '{' {
+			bracketCount++
+		} else if jsonStr[i] == '}' {
+			bracketCount--
+		}
+		if bracketCount == 0 {
+			youProStateEnd = i + 1
+			break
+		}
 	}
 
-	// 4. 层层解析，直到找到 youProState
-	props, ok := data["props"].(map[string]interface{})
-	if !ok {
-		return -1, errors.New("key 'props' not found or not a map")
-	}
-	pageProps, ok := props["pageProps"].(map[string]interface{})
-	if !ok {
-		return -1, errors.New("key 'pageProps' not found or not a map")
-	}
-	youProState, ok := pageProps["youProState"].(map[string]interface{})
-	if !ok {
-		return -1, errors.New("key 'youProState' not found or not a map")
+	if youProStateEnd == -1 {
+		return -1, errors.New(`could not find end of "youProState" object`)
 	}
 
-	// 5. 将 youProState 直接反序列化到 state 结构体
-	var s state
-	youProStateBytes, err := json.Marshal(youProState)
+	youProStateStr := jsonStr[youProStateStart:youProStateEnd]
+
+	// 5. 解析 "freemium" 对象
+	freemiumStart := strings.Index(youProStateStr, `"freemium":{`)
+	if freemiumStart == -1 {
+		return -1, errors.New(`"freemium" not found in "youProState"`)
+	}
+	freemiumStart += len(`"freemium":`)
+
+	bracketCount = 0
+	freemiumEnd := -1
+	for i := freemiumStart; i < len(youProStateStr); i++ {
+		if youProStateStr[i] == '{' {
+			bracketCount++
+		} else if youProStateStr[i] == '}' {
+			bracketCount--
+		}
+		if bracketCount == 0 {
+			freemiumEnd = i + 1
+			break
+		}
+	}
+
+	if freemiumEnd == -1 {
+		return -1, errors.New(`could not find end of "freemium" object`)
+	}
+
+	freemiumStr := youProStateStr[freemiumStart:freemiumEnd]
+
+	// 6. 提取 "max_calls" 和 "used_calls"
+	maxCallsStart := strings.Index(freemiumStr, `"max_calls":`)
+	if maxCallsStart == -1 {
+		return -1, errors.New(`"max_calls" not found in "freemium"`)
+	}
+	maxCallsStart += len(`"max_calls":`)
+	maxCallsEnd := strings.Index(freemiumStr[maxCallsStart:], ",")
+	if maxCallsEnd == -1 {
+		maxCallsEnd = len(freemiumStr) - 1 // 到 "}" 前面
+	} else {
+		maxCallsEnd += maxCallsStart
+	}
+
+	maxCallsStr := freemiumStr[maxCallsStart:maxCallsEnd]
+	maxCalls, err := strconv.Atoi(strings.TrimSpace(maxCallsStr))
 	if err != nil {
-		return -1, err
-	}
-	logrus.Infof("youProStateBytes: %s", string(youProStateBytes)) // 打印 youProStateBytes
-	
-	if err := json.Unmarshal(youProStateBytes, &s); err != nil {
-		logrus.Errorf("error unmarshaling youProState JSON: %v", err) // 打印详细的错误信息
-		return -1, fmt.Errorf("error unmarshaling youProState JSON: %v", err)
+		return -1, fmt.Errorf(`error parsing "max_calls": %v`, err)
 	}
 
-	// ... 后续逻辑，使用 s.Freemium, s.Subscriptions, s.Org_subscriptions ...
-	if len(s.Subscriptions) > 0 {
-		iter := s.Subscriptions[0]
-		value := iter.(map[string]interface{})
-		if service, ok := value["service"]; ok && service == "youpro" {
-			logrus.Info("used: you pro")
-			return 200, nil
-		}
+	usedCallsStart := strings.Index(freemiumStr, `"used_calls":`)
+	if usedCallsStart == -1 {
+		return -1, errors.New(`"used_calls" not found in "freemium"`)
+	}
+	usedCallsStart += len(`"used_calls":`)
+	usedCallsEnd := strings.Index(freemiumStr[usedCallsStart:], ",")
+	if usedCallsEnd == -1 {
+		usedCallsEnd = len(freemiumStr) - 1 // 到 "}" 前面
+	} else {
+		usedCallsEnd += usedCallsStart
 	}
 
-	if len(s.Org_subscriptions) > 0 {
-		iter := s.Org_subscriptions[0]
-		value := iter.(map[string]interface{})
-		if service, ok := value["service"]; ok && service == "youpro_teams" {
-			logrus.Info("used: you team")
-			return 200, nil
-		}
+	usedCallsStr := freemiumStr[usedCallsStart:usedCallsEnd]
+	usedCalls, err := strconv.Atoi(strings.TrimSpace(usedCallsStr))
+	if err != nil {
+		return -1, fmt.Errorf(`error parsing "used_calls": %v`, err)
 	}
 
-	logrus.Infof("used: %d/%d", s.Freemium["used_calls"], s.Freemium["max_calls"])
-	return s.Freemium["max_calls"] - s.Freemium["used_calls"], nil
+	logrus.Infof("used: %d/%d", usedCalls, maxCalls)
+	return maxCalls - usedCalls, nil
 }
 
 // 创建一个自定义模型，已存在则删除后创建
