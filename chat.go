@@ -189,6 +189,7 @@ func (c *Chat) State(ctx context.Context) (int, error) {
 		Header("Accept-Language", c.lang).
 		Header("Referer", "https://you.com/").
 		Header("Origin", "https://you.com").
+		Header("Accept", "application/json").
 		DoS(http.StatusOK)
 	if err != nil {
 		return -1, err
